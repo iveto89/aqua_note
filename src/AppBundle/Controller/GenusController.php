@@ -5,11 +5,15 @@ namespace AppBundle\Controller;
 
 use AppBundle\Entity\Genus;
 use AppBundle\Entity\GenusNotes;
+use AppBundle\Entity\Logger;
+use AppBundle\Service\MarkdownTransformer;
 use Sensio\Bundle\FrameworkExtraBundle\Configuration\Method;
 use Sensio\Bundle\FrameworkExtraBundle\Configuration\Route;
 use Symfony\Bundle\FrameworkBundle\Controller\Controller;
 use Symfony\Component\HttpFoundation\JsonResponse;
+use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
+use AppBundle\Service\Mailer;
 
 class GenusController extends Controller
 {
@@ -56,7 +60,7 @@ class GenusController extends Controller
     /**
      * @Route("/genus/{genusName}",  name="genus_show")
      */
-    public function showAction($genusName)
+    public function showAction($genusName, Mailer $mailer, Request $request)
     {
 //        $templating = $this->container->get('templating');
 //        $html = $templating->render('genus/show.html.twig', [
@@ -72,20 +76,35 @@ class GenusController extends Controller
         if(!$genus) {
             throw $this->createNotFoundException('Genus not found!');
         }
-
-        //Cache
-        $cache = $this->get('doctrine_cache.providers.my_markdown_cache');
-        $key = md5($funFact);
-        if ($cache->contains($key)) {
-            $funFact = $cache->fetch($key);
-        } else {
-            sleep(1); // fake how slow this could be
-            $funFact = $this->get('markdown.parser')
-                ->transform($funFact);
-            $cache->save($key, $funFact);
+        $ip = $request->getClientIp();
+        if($ip == 'unknown'){
+            $ip = $_SERVER['REMOTE_ADDR'];
         }
 
+
+        $logger = $this->get('app.logger');
+        $log_data = $logger->log();
+        $message = $mailer->notifyOfSiteUpdate($this->get('mailer'));
+
+
+//        $markdownParser = new MarkdownTransformer($this->get('markdown.parser'));
+        $markdownTransformer = $this->get('app.markdown_transformer');
+        $funFact = $markdownTransformer->parse($genus->getFunFact());
+
+        //Cache
+//        $cache = $this->get('doctrine_cache.providers.my_markdown_cache');
+//        $key = md5($funFact);
+//        if ($cache->contains($key)) {
+//            $funFact = $cache->fetch($key);
+//        } else {
+//            sleep(1); // fake how slow this could be
+//            $funFact = $this->get('markdown.parser')
+//                ->transform($funFact);
+//            $cache->save($key, $funFact);
+//        }
+
         return $this->render('genus/show.html.twig', [
+            'funFact' => $funFact,
             'genus' => $genus
         ]);
 //        return new Response('The genus: '.$genusName);
